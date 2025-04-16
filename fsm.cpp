@@ -229,7 +229,8 @@ static void updateIdle(FSMContext* ctx) {
                 rs422SendNozzleOff();
                 ctx->waitingForResponse = true;
                 nozzleUpStartTime = 0;
-            } else if (respBuffer[4] == '1' && respBuffer[5] == '0' || respBuffer[4] == '9' && respBuffer[5] == '0') {
+                ctx->nozzleUpWarning = false;
+            } else if (respBuffer[4] == '1' && respBuffer[5] == '0') {
                 ctx->nozzleUpWarning = false;
                 if (ctx->modeSelected) {
                     displayFuelMode(ctx->fuelMode);
@@ -244,10 +245,10 @@ static void updateIdle(FSMContext* ctx) {
                 if (nozzleUpStartTime == 0) {
                     nozzleUpStartTime = currentMillis;
                 }
-                if (currentMillis - nozzleUpStartTime > 60000) {
-                    ctx->state = FSM_STATE_ERROR;
-                    ctx->stateEntryTime = currentMillis;
-                    displayMessage("Nozzle up long! Check");
+                if (currentMillis - nozzleUpStartTime > 5000) {
+                    ctx->nozzleUpWarning = false;
+                    displayMessage("Nozzle timeout, reset");
+                    Serial.println("Nozzle up timeout, resetting");
                 } else {
                     displayMessage("Nozzle up! Hang up");
                 }
@@ -705,9 +706,26 @@ void processKeyFSM(FSMContext* ctx, char key) {
                     snprintf(displayStr, sizeof(displayStr), "%s: %s",
                              ctx->fuelMode == FUEL_BY_VOLUME ? "Volume" : "Amount", ctx->priceInput);
                     displayMessage(displayStr);
+                    Serial.print("Input so far: ");
+                    Serial.println(ctx->priceInput);
                 }
                 ctx->stateEntryTime = currentMillis;
-            } else if (key == 'E') {
+            }
+            else if (key == '*') { // Обработка точки
+                size_t len = strlen(ctx->priceInput);
+                if (len < PRICE_FORMAT_LENGTH - 1 && strchr(ctx->priceInput, '.') == nullptr) {
+                    ctx->priceInput[len] = '.';
+                    ctx->priceInput[len + 1] = '\0';
+                    char displayStr[32];
+                    snprintf(displayStr, sizeof(displayStr), "%s: %s",
+                             ctx->fuelMode == FUEL_BY_VOLUME ? "Volume" : "Amount", ctx->priceInput);
+                    displayMessage(displayStr);
+                    Serial.print("Input so far: ");
+                    Serial.println(ctx->priceInput);
+                }
+                ctx->stateEntryTime = currentMillis;
+            }
+            else if (key == 'E') {
                 if (strlen(ctx->priceInput) == 0) {
                     ctx->state = FSM_STATE_IDLE;
                     ctx->stateEntryTime = currentMillis;
@@ -723,26 +741,46 @@ void processKeyFSM(FSMContext* ctx, char key) {
                     displayMessage("Cleared");
                     ctx->stateEntryTime = currentMillis;
                 }
-            } else if (key == 'K') {
+            }
+            else if (key == 'K') {
                 if (strlen(ctx->priceInput) > 0) {
-                    uint32_t value = atol(ctx->priceInput);
-                    if (value > 0) {
-                        if (ctx->fuelMode == FUEL_BY_VOLUME) {
-                            ctx->transactionVolume = value * 100;
-                            ctx->transactionAmount = 0;
+                    uint32_t value;
+                    if (ctx->fuelMode == FUEL_BY_VOLUME) {
+                        float floatValue = atof(ctx->priceInput);
+                        if (floatValue > 0 && floatValue <= 9999.99) {
+                            value = (uint32_t)(floatValue * 100);
                         } else {
-                            ctx->transactionVolume = 0;
-                            ctx->transactionAmount = value;
+                            displayMessage("Invalid volume!");
+                            ctx->priceInput[0] = '\0';
+                            ctx->stateEntryTime = currentMillis;
+                            Serial.println("Invalid volume: Out of range");
+                            break;
                         }
-                        ctx->state = FSM_STATE_CONFIRM_TRANSACTION;
-                        ctx->stateEntryTime = currentMillis;
-                        ctx->priceInput[0] = '\0';
-                        displayMessage("Confirm? Press K");
                     } else {
-                        displayMessage("Invalid input!");
-                        ctx->priceInput[0] = '\0';
-                        ctx->stateEntryTime = currentMillis;
+                        value = atol(ctx->priceInput);
+                        if (value == 0) {
+                            displayMessage("Invalid amount!");
+                            ctx->priceInput[0] = '\0';
+                            ctx->stateEntryTime = currentMillis;
+                            Serial.println("Invalid amount: Zero");
+                            break;
+                        }
+                        Serial.print("Parsed amount: ");
+                        Serial.println(value);
                     }
+                    if (ctx->fuelMode == FUEL_BY_VOLUME) {
+                        ctx->transactionVolume = value;
+                        ctx->transactionAmount = 0;
+                    } else {
+                        ctx->transactionVolume = 0;
+                        ctx->transactionAmount = value;
+                    }
+                    ctx->state = FSM_STATE_CONFIRM_TRANSACTION;
+                    ctx->stateEntryTime = currentMillis;
+                    ctx->priceInput[0] = '\0';
+                    displayMessage("Confirm? Press K");
+                    Serial.print("Confirmed value: ");
+                    Serial.println(value);
                 }
             }
             break;
@@ -893,7 +931,7 @@ void processKeyFSM(FSMContext* ctx, char key) {
         case FSM_STATE_TRANSACTION: {
             if (key == 'E' && !ctx->transactionStarted) {
                 rs422SendNozzleOff();
-                ctx->waitingForResponse = true;
+                ctx->waitingForResponse = false;
                 ctx->state = FSM_STATE_IDLE;
                 ctx->stateEntryTime = currentMillis;
                 ctx->transactionStarted = false;
@@ -904,6 +942,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->finalLiters_dL = 0;
                 ctx->finalPriceTotal = 0;
                 ctx->errorCount = 0;
+                ctx->nozzleUpWarning = false;
+                ctx->skipFirstStatusCheck = true;
+                rs422SendNozzleOff();
+                rs422SendStatus();
+                delay(50);
                 if (!ctx->nozzleUpWarning) {
                     if (ctx->modeSelected) {
                         displayFuelMode(ctx->fuelMode);
@@ -911,6 +954,7 @@ void processKeyFSM(FSMContext* ctx, char key) {
                         displayMessage("Please select mode");
                     }
                 }
+                Serial.println("Transaction cancelled, returning to idle");
             } else if (key == 'E') {
                 rs422SendPause();
                 ctx->waitingForResponse = true;

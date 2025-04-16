@@ -48,9 +48,9 @@ void rs422SendStatus() {
 
 void rs422SendTransaction(FuelMode mode, uint32_t volume, uint32_t amount, uint16_t price) {
     if (isSending || isReceiving) return;
-    if (price > 9999 || (mode == FUEL_BY_VOLUME && volume > 999999) || (mode == FUEL_BY_PRICE && amount > 999999)) {
-        log(LOG_LEVEL_ERROR, "Invalid transaction parameters");
-        displayMessage("Invalid transaction data");
+    if (price > 9999) {
+        log(LOG_LEVEL_ERROR, "Invalid price");
+        displayMessage("Invalid price");
         return;
     }
     isSending = true;
@@ -65,6 +65,8 @@ void rs422SendTransaction(FuelMode mode, uint32_t volume, uint32_t amount, uint1
             break;
         case FUEL_BY_PRICE:
             snprintf(payload, sizeof(payload), "M1;%06lu;%04u", amount, price);
+            Serial.print("Sending transaction amount: ");
+            Serial.println(amount);
             break;
         case FUEL_BY_FULL_TANK:
             snprintf(payload, sizeof(payload), "M1;999999;%04u", price);

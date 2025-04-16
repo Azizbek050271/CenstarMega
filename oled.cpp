@@ -10,12 +10,12 @@ void initOLED() {
 
 bool displayMessage(const char* msg) {
     u8g2.clearBuffer();
-    u8g2.setFont(u8g2_font_ncenB10_tr);
+    u8g2.setFont(u8g2_font_t0_15_tf);
     
     // Определяем высоту строки с учетом текущего шрифта
     int ascent = u8g2.getAscent();      // расстояние от базовой линии до верхней точки
     int descent = -u8g2.getDescent();     // делаем положительным
-    int lineHeight = ascent + descent + 2; // добавляем небольшой отступ, например 2 пикселя
+    int lineHeight = ascent + descent + 4; // добавляем небольшой отступ, например 2 пикселя
     
     // Ширина дисплея (можно взять из SCREEN_WIDTH, если оно определено)
     int displayWidth = 128;
