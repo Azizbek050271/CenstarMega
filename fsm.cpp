@@ -627,18 +627,19 @@ void initFSM(FSMContext* ctx) {
         ctx->currentLiters_dL = savedLiters;
         ctx->currentPriceTotal = savedPrice;
         ctx->state = savedState;
+        ctx->fuelMode = savedMode;
+        ctx->modeSelected = savedModeSelected;
         if (savedState == FSM_STATE_TRANSACTION || savedState == FSM_STATE_TRANSACTION_PAUSED) {
-            ctx->fuelMode = savedMode;
-            ctx->modeSelected = savedModeSelected;
             ctx->transactionStarted = true;
             ctx->monitorActive = true;
             ctx->monitorState = 1;
             displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Restoring trans...", ctx->price > 9999);
         } else {
-            // Игнорируем сохранённый режим для неактивных транзакций
             ctx->state = ctx->priceValid ? FSM_STATE_CHECK_STATUS : FSM_STATE_WAIT_FOR_PRICE_INPUT;
             if (!ctx->priceValid) {
                 displayMessage("Set price (0-99999)");
+            } else if (ctx->modeSelected) {
+                displayFuelMode(ctx->fuelMode);
             } else {
                 displayMessage("Please select mode");
             }
