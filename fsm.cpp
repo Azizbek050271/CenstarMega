@@ -324,18 +324,7 @@ static void updateEditPrice(FSMContext* ctx) {
 }
 
 static void updateConfirmTransaction(FSMContext* ctx) {
-    unsigned long currentMillis = millis();
-    if (currentMillis - ctx->stateEntryTime >= 10000) {
-        ctx->state = FSM_STATE_IDLE;
-        ctx->stateEntryTime = currentMillis;
-        if (!ctx->nozzleUpWarning) {
-            if (ctx->modeSelected) {
-                displayFuelMode(ctx->fuelMode);
-            } else {
-                displayMessage("Please select mode");
-            }
-        }
-    }
+    // Ждём действия пользователя, без таймаута
 }
 
 static void updateTransaction(FSMContext* ctx) {
@@ -367,12 +356,7 @@ static void updateTransaction(FSMContext* ctx) {
         char expectedCommand = ctx->monitorState == 0 ? 'S' : (ctx->monitorState == 1 ? 'L' : 'R');
         int respLength = rs422WaitForResponse(respBuffer, expectedLength, expectedCommand);
         if (handleResponse(respBuffer, respLength, STATUS_RESPONSE_LENGTH, ctx)) {
-            if (!ctx->transactionStarted && respBuffer[4] == '1' && respBuffer[5] == '0') {
-                ctx->waitingForResponse = false;
-                displayMessage("Confirm? Press K");
-                return;
-            }
-            if (!ctx->transactionStarted && (respBuffer[4] == '2' || respBuffer[4] == '1')) {
+            if (!ctx->transactionStarted && (respBuffer[4] == '1' && respBuffer[5] == '0' || respBuffer[4] == '2' && respBuffer[5] == '1')) {
                 uint16_t protocolPrice = ctx->price > 9999 ? ctx->price / 10 : ctx->price;
                 rs422SendTransaction(ctx->fuelMode, ctx->transactionVolume, ctx->transactionAmount, protocolPrice);
                 ctx->waitingForResponse = true;
@@ -381,6 +365,7 @@ static void updateTransaction(FSMContext* ctx) {
                 ctx->currentPriceTotal = 0;
                 ctx->errorCount = 0;
                 displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Dispensing...", ctx->price > 9999);
+                Serial.println("Transaction started");
             } else if (ctx->monitorState == 0) {
                 if (isValidStatus(respBuffer)) {
                     for (size_t i = 0; i < sizeof(statusActions) / sizeof(statusActions[0]); i++) {
@@ -421,10 +406,8 @@ static void updateTransaction(FSMContext* ctx) {
                                 break;
                             }
                         }
-                        ctx->currentLiters_dL = valid ? atol(litersStr) : 0;
+                        ctx->currentLiters_dL = valid ? atol(litersStr) : ctx->currentLiters_dL;
                         displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Dispensing...", ctx->price > 9999);
-                    } else {
-                        ctx->currentLiters_dL = 0;
                     }
                     ctx->monitorState = 2;
                 } else if (ctx->monitorState == 2 && respBuffer[3] == 'R' && respBuffer[4] == '1') {
@@ -438,10 +421,8 @@ static void updateTransaction(FSMContext* ctx) {
                                 break;
                             }
                         }
-                        ctx->currentPriceTotal = valid ? atol(priceStr) : 0;
+                        ctx->currentPriceTotal = valid ? atol(priceStr) : ctx->currentPriceTotal;
                         displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Dispensing...", ctx->price > 9999);
-                    } else {
-                        ctx->currentPriceTotal = 0;
                     }
                     ctx->monitorState = 0;
                 }
@@ -508,10 +489,12 @@ static void updateTransactionEnd(FSMContext* ctx) {
     if (currentMillis - lastResponseTime < DELAY_AFTER_RESPONSE) return;
     lastResponseTime = currentMillis;
 
-    if (!ctx->waitingForResponse && !dataReceived && retryCount < 3) {
+    if (!ctx->waitingForResponse && !dataReceived && retryCount < 5) {
         rs422SendTransactionUpdate();
         ctx->waitingForResponse = true;
         retryCount++;
+        Serial.print("Requesting transaction update, attempt: ");
+        Serial.println(retryCount);
     } else if (ctx->waitingForResponse) {
         uint8_t respBuffer[32] = {0};
         int respLength = rs422WaitForResponse(respBuffer, TRANSACTION_END_RESPONSE_LENGTH, 'T');
@@ -531,46 +514,32 @@ static void updateTransactionEnd(FSMContext* ctx) {
                         break;
                     }
                 }
-                ctx->finalLiters_dL = valid ? atol(litersStr) : ctx->finalLiters_dL;
-                ctx->finalPriceTotal = valid ? atol(priceStr) : ctx->finalPriceTotal;
-
+                if (valid) {
+                    ctx->finalLiters_dL = atol(litersStr);
+                    ctx->finalPriceTotal = atol(priceStr);
+                } else {
+                    Serial.println("Invalid transaction data, using last valid values");
+                }
                 displayTransaction(ctx->finalLiters_dL, ctx->finalPriceTotal, "Filling end", ctx->price > 9999);
                 rs422SendNozzleOff();
                 ctx->waitingForResponse = false;
                 dataReceived = true;
                 retryCount = 0;
                 saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state);
+                Serial.print("Transaction end: Liters=");
+                Serial.print(ctx->finalLiters_dL);
+                Serial.print(", Price=");
+                Serial.println(ctx->finalPriceTotal);
             }
         } else {
             ctx->waitingForResponse = false;
             ctx->errorCount++;
             retryCount++;
-            if (retryCount >= 3) {
+            if (retryCount >= 5) {
                 ctx->state = FSM_STATE_ERROR;
                 ctx->stateEntryTime = currentMillis;
                 displayMessage("Trans error! Check pump");
-            }
-        }
-    }
-
-    if (dataReceived && (currentMillis - ctx->stateEntryTime >= 10000)) {
-        ctx->state = FSM_STATE_IDLE;
-        ctx->stateEntryTime = currentMillis;
-        ctx->transactionStarted = false;
-        ctx->monitorState = 0;
-        ctx->monitorActive = false;
-        ctx->waitingForResponse = false;
-        ctx->currentLiters_dL = 0;
-        ctx->currentPriceTotal = 0;
-        ctx->finalLiters_dL = 0;
-        ctx->finalPriceTotal = 0;
-        ctx->errorCount = 0;
-        ctx->skipFirstStatusCheck = true;
-        if (!ctx->nozzleUpWarning) {
-            if (ctx->modeSelected) {
-                displayFuelMode(ctx->fuelMode);
-            } else {
-                displayMessage("Please select mode");
+                Serial.println("Transaction data error after retries");
             }
         }
     }
@@ -716,6 +685,8 @@ void processKeyFSM(FSMContext* ctx, char key) {
 
     Serial.print("Key pressed: ");
     Serial.println(key);
+    Serial.print("Mode selected: ");
+    Serial.println(ctx->modeSelected);
 
     switch (ctx->state) {
         case FSM_STATE_WAIT_FOR_PRICE_INPUT: {
@@ -898,7 +869,8 @@ void processKeyFSM(FSMContext* ctx, char key) {
             if (key == 'K') {
                 ctx->state = FSM_STATE_TRANSACTION;
                 ctx->stateEntryTime = currentMillis;
-                displayMessage("Lift nozzle!");
+                displayMessage("Confirm! UP Nozzle");
+                Serial.println("Transaction confirmed");
             } else if (key == 'E') {
                 ctx->state = FSM_STATE_IDLE;
                 ctx->stateEntryTime = currentMillis;

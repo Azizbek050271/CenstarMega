@@ -51,7 +51,7 @@ struct FSMContext {
     unsigned long lastC0SendTime;
     bool skipFirstStatusCheck;
     char priceInput[PRICE_FORMAT_LENGTH + 1];
-    bool modeSelected; // Новый флаг
+    bool modeSelected;
 };
 
 void initFSM(FSMContext* ctx);

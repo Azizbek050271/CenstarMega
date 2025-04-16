@@ -14,6 +14,8 @@
 #define KEYPAD_COL_COUNT 4      // Количество столбцов клавиатуры
 const byte KEYPAD_ROWS[KEYPAD_ROW_COUNT] = {22, 23, 24, 25, 26}; // Пины строк
 const byte KEYPAD_COLS[KEYPAD_COL_COUNT] = {27, 28, 29, 30};     // Пины столбцов
+#define KEY_DEBOUNCE_MS 100
+#define MAX_ERROR_COUNT 10 // Увеличено для большей надёжности
 
 // Параметры интерфейса RS-422
 #define RS422_BAUD_RATE 9600    // Скорость передачи данных (бод)

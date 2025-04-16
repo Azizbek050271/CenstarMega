@@ -24,7 +24,6 @@ void loop() {
     // Неблокирующее завершение приветствия
     if (welcomeShown && millis() >= welcomeUntil) {
         welcomeShown = false;
-        // FSM управляет сообщениями после заставки
     }
 
     if (!welcomeShown) {
