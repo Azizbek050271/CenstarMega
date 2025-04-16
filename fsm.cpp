@@ -1,4 +1,3 @@
-// fsm.cpp
 #include "fsm.h"
 #include "config.h"
 #include "eeprom.h"
@@ -124,7 +123,7 @@ static void updateCheckStatus(FSMContext* ctx) {
                 ctx->monitorActive = true;
                 ctx->monitorState = 0;
                 displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Paused", ctx->price > 9999);
-                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state);
+                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
             } else if (respBuffer[4] == '6' && respBuffer[5] == '1') {
                 ctx->state = FSM_STATE_TRANSACTION;
                 ctx->stateEntryTime = currentMillis;
@@ -189,7 +188,7 @@ static void updateError(FSMContext* ctx) {
                 ctx->monitorActive = true;
                 ctx->monitorState = 0;
                 displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Paused", ctx->price > 9999);
-                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state);
+                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
             } else {
                 ctx->state = FSM_STATE_CHECK_STATUS;
                 ctx->stateEntryTime = currentMillis;
@@ -380,10 +379,10 @@ static void updateTransaction(FSMContext* ctx) {
                                     rs422SendNozzleOff();
                                 }
                                 displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Trans stopped", ctx->price > 9999);
-                                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state);
+                                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
                             } else if (statusActions[i].nextState == FSM_STATE_TRANSACTION_PAUSED) {
                                 displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Paused", ctx->price > 9999);
-                                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state);
+                                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
                             } else if (statusActions[i].nextState == FSM_STATE_TRANSACTION && respBuffer[4] == '6' && respBuffer[5] == '1') {
                                 ctx->monitorActive = true;
                                 ctx->monitorState = 1;
@@ -445,7 +444,7 @@ static void updateTransactionPaused(FSMContext* ctx) {
         ctx->state = FSM_STATE_TRANSACTION_END;
         ctx->stateEntryTime = currentMillis;
         displayMessage("Nozzle back! Trans end");
-        saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state);
+        saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
         return;
     }
 
@@ -463,7 +462,7 @@ static void updateTransactionPaused(FSMContext* ctx) {
                 ctx->waitingForResponse = true;
                 ctx->state = FSM_STATE_TRANSACTION_END;
                 ctx->stateEntryTime = currentMillis;
-                saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state);
+                saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
             } else if (respBuffer[4] != '7' || respBuffer[5] != '1') {
                 ctx->monitorActive = true;
                 ctx->monitorState = 0;
@@ -525,7 +524,7 @@ static void updateTransactionEnd(FSMContext* ctx) {
                 ctx->waitingForResponse = false;
                 dataReceived = true;
                 retryCount = 0;
-                saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state);
+                saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
                 Serial.print("Transaction end: Liters=");
                 Serial.print(ctx->finalLiters_dL);
                 Serial.print(", Price=");
@@ -622,10 +621,14 @@ void initFSM(FSMContext* ctx) {
     // Проверка сохранённой транзакции
     uint32_t savedLiters, savedPrice;
     FSMState savedState;
-    if (restoreTransactionState(&savedLiters, &savedPrice, &savedState)) {
+    FuelMode savedMode;
+    bool savedModeSelected;
+    if (restoreTransactionState(&savedLiters, &savedPrice, &savedState, &savedMode, &savedModeSelected)) {
         ctx->currentLiters_dL = savedLiters;
         ctx->currentPriceTotal = savedPrice;
         ctx->state = savedState;
+        ctx->fuelMode = savedMode;
+        ctx->modeSelected = savedModeSelected;
         if (savedState == FSM_STATE_TRANSACTION || savedState == FSM_STATE_TRANSACTION_PAUSED) {
             ctx->transactionStarted = true;
             ctx->monitorActive = true;
@@ -635,6 +638,8 @@ void initFSM(FSMContext* ctx) {
             ctx->state = ctx->priceValid ? FSM_STATE_CHECK_STATUS : FSM_STATE_WAIT_FOR_PRICE_INPUT;
             if (!ctx->priceValid) {
                 displayMessage("Set price (0-99999)");
+            } else if (ctx->modeSelected) {
+                displayFuelMode(ctx->fuelMode);
             } else {
                 displayMessage("Please select mode");
             }
@@ -687,6 +692,8 @@ void processKeyFSM(FSMContext* ctx, char key) {
     Serial.println(key);
     Serial.print("Mode selected: ");
     Serial.println(ctx->modeSelected);
+    Serial.print("Current mode: ");
+    Serial.println(ctx->fuelMode);
 
     switch (ctx->state) {
         case FSM_STATE_WAIT_FOR_PRICE_INPUT: {
@@ -911,7 +918,7 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->state = FSM_STATE_TRANSACTION_PAUSED;
                 ctx->stateEntryTime = currentMillis;
                 displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Paused", ctx->price > 9999);
-                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state);
+                saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
             }
             break;
         }
@@ -931,7 +938,7 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->waitingForResponse = true;
                 ctx->state = FSM_STATE_TRANSACTION_END;
                 ctx->stateEntryTime = currentMillis;
-                saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state);
+                saveTransactionState(ctx->finalLiters_dL, ctx->finalPriceTotal, ctx->state, ctx->fuelMode, ctx->modeSelected);
             }
             break;
         }
