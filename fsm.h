@@ -12,7 +12,6 @@ typedef enum {
 } FuelMode;
 
 typedef enum {
-    FSM_STATE_STARTUP,
     FSM_STATE_CHECK_STATUS,
     FSM_STATE_IDLE,
     FSM_STATE_WAIT_FOR_PRICE_INPUT,
@@ -25,7 +24,7 @@ typedef enum {
     FSM_STATE_TRANSACTION_END,
     FSM_STATE_TOTAL_COUNTER,
     FSM_STATE_TRANSACTION_PAUSED,
-    FSM_STATE_CONFIRM_TRANSACTION // Добавлено новое состояние
+    FSM_STATE_CONFIRM_TRANSACTION
 } FSMState;
 
 struct FSMContext {
@@ -52,6 +51,7 @@ struct FSMContext {
     unsigned long lastC0SendTime;
     bool skipFirstStatusCheck;
     char priceInput[PRICE_FORMAT_LENGTH + 1];
+    bool modeSelected; // Новый флаг
 };
 
 void initFSM(FSMContext* ctx);

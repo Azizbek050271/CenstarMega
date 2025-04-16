@@ -11,7 +11,7 @@ static unsigned long welcomeUntil = 0;
 static bool welcomeShown = false;
 
 void setup() {
-    Serial.begin(9600); // Оставляем 9600, как в оригинале
+    Serial.begin(9600);
     initOLED();
     initRS422();
     initFSM(&fsmContext);
@@ -24,11 +24,7 @@ void loop() {
     // Неблокирующее завершение приветствия
     if (welcomeShown && millis() >= welcomeUntil) {
         welcomeShown = false;
-        if (fsmContext.priceValid) {
-            displayMessage("Please select mode"); // Сразу после CENSTAR
-        } else {
-            displayMessage("Set price (0-99999)");
-        }
+        // FSM управляет сообщениями после заставки
     }
 
     if (!welcomeShown) {

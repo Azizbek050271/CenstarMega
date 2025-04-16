@@ -57,7 +57,7 @@ struct StatusAction {
 
 static const StatusAction statusActions[] = {
     {{'1', '0'}, FSM_STATE_IDLE, true, nullptr},
-    {{'2', '1'}, FSM_STATE_IDLE, true, "Nozzle up! Hang up."},
+    {{'2', '1'}, FSM_STATE_IDLE, true, "Nozzle up! Hang up"},
     {{'3', '1'}, FSM_STATE_TRANSACTION, false, nullptr},
     {{'4', '1'}, FSM_STATE_TRANSACTION, false, nullptr},
     {{'6', '1'}, FSM_STATE_TRANSACTION, false, nullptr},
@@ -98,7 +98,11 @@ static void updateCheckStatus(FSMContext* ctx) {
                 ctx->state = FSM_STATE_IDLE;
                 ctx->stateEntryTime = currentMillis;
                 ctx->nozzleUpWarning = false;
-                displayMessage("Please select mode");
+                if (ctx->modeSelected) {
+                    displayFuelMode(ctx->fuelMode);
+                } else {
+                    displayMessage("Please select mode");
+                }
                 nozzleUpStartTime = 0;
             } else if (respBuffer[4] == '2' && respBuffer[5] == '1') {
                 rs422SendNozzleOff();
@@ -112,7 +116,7 @@ static void updateCheckStatus(FSMContext* ctx) {
                     ctx->stateEntryTime = currentMillis;
                     displayMessage("Nozzle up long! Check");
                 } else {
-                    displayMessage("Nozzle up! Hang up.");
+                    displayMessage("Nozzle up! Hang up");
                 }
             } else if (respBuffer[4] == '7' && respBuffer[5] == '1') {
                 ctx->state = FSM_STATE_TRANSACTION_PAUSED;
@@ -169,12 +173,16 @@ static void updateError(FSMContext* ctx) {
                 ctx->monitorActive = false;
                 ctx->monitorState = 0;
                 ctx->waitingForResponse = false;
-                displayMessage("Please select mode");
+                if (ctx->modeSelected) {
+                    displayFuelMode(ctx->fuelMode);
+                } else {
+                    displayMessage("Please select mode");
+                }
             } else if (respBuffer[4] == '2' && respBuffer[5] == '1') {
                 rs422SendNozzleOff();
                 ctx->waitingForResponse = true;
                 ctx->nozzleUpWarning = true;
-                displayMessage("Nozzle up! Hang up.");
+                displayMessage("Nozzle up! Hang up");
             } else if (respBuffer[4] == '7' && respBuffer[5] == '1') {
                 ctx->state = FSM_STATE_TRANSACTION_PAUSED;
                 ctx->stateEntryTime = currentMillis;
@@ -204,7 +212,11 @@ static void updateIdle(FSMContext* ctx) {
         ctx->monitorActive = false;
         ctx->monitorState = 0;
         ctx->waitingForResponse = false;
-        displayMessage("Please select mode");
+        if (ctx->modeSelected) {
+            displayFuelMode(ctx->fuelMode);
+        } else {
+            displayMessage("Please select mode");
+        }
         return;
     }
     if (ctx->statusPollingActive && !ctx->waitingForResponse) {
@@ -220,7 +232,11 @@ static void updateIdle(FSMContext* ctx) {
                 nozzleUpStartTime = 0;
             } else if (respBuffer[4] == '1' && respBuffer[5] == '0' || respBuffer[4] == '9' && respBuffer[5] == '0') {
                 ctx->nozzleUpWarning = false;
-                displayMessage("Please select mode");
+                if (ctx->modeSelected) {
+                    displayFuelMode(ctx->fuelMode);
+                } else {
+                    displayMessage("Please select mode");
+                }
                 nozzleUpStartTime = 0;
             } else if (respBuffer[4] == '2' && respBuffer[5] == '1') {
                 rs422SendNozzleOff();
@@ -234,7 +250,7 @@ static void updateIdle(FSMContext* ctx) {
                     ctx->stateEntryTime = currentMillis;
                     displayMessage("Nozzle up long! Check");
                 } else {
-                    displayMessage("Nozzle up! Hang up.");
+                    displayMessage("Nozzle up! Hang up");
                 }
             } else {
                 ctx->errorCount++;
@@ -258,7 +274,11 @@ static void updateViewPrice(FSMContext* ctx) {
         ctx->state = FSM_STATE_IDLE;
         ctx->stateEntryTime = currentMillis;
         if (!ctx->nozzleUpWarning) {
-            displayMessage("Please select mode");
+            if (ctx->modeSelected) {
+                displayFuelMode(ctx->fuelMode);
+            } else {
+                displayMessage("Please select mode");
+            }
         }
     }
 }
@@ -279,7 +299,11 @@ static void updateTransitionEditPrice(FSMContext* ctx) {
         ctx->state = FSM_STATE_IDLE;
         ctx->stateEntryTime = currentMillis;
         if (!ctx->nozzleUpWarning) {
-            displayMessage("Please select mode");
+            if (ctx->modeSelected) {
+                displayFuelMode(ctx->fuelMode);
+            } else {
+                displayMessage("Please select mode");
+            }
         }
     }
 }
@@ -290,7 +314,11 @@ static void updateEditPrice(FSMContext* ctx) {
         ctx->state = FSM_STATE_IDLE;
         ctx->stateEntryTime = currentMillis;
         if (!ctx->nozzleUpWarning) {
-            displayMessage("Please select mode");
+            if (ctx->modeSelected) {
+                displayFuelMode(ctx->fuelMode);
+            } else {
+                displayMessage("Please select mode");
+            }
         }
     }
 }
@@ -301,7 +329,11 @@ static void updateConfirmTransaction(FSMContext* ctx) {
         ctx->state = FSM_STATE_IDLE;
         ctx->stateEntryTime = currentMillis;
         if (!ctx->nozzleUpWarning) {
-            displayMessage("Please select mode");
+            if (ctx->modeSelected) {
+                displayFuelMode(ctx->fuelMode);
+            } else {
+                displayMessage("Please select mode");
+            }
         }
     }
 }
@@ -309,7 +341,6 @@ static void updateConfirmTransaction(FSMContext* ctx) {
 static void updateTransaction(FSMContext* ctx) {
     unsigned long currentMillis = millis();
     static unsigned long lastResponseTime = 0;
-    static unsigned long lastEepromSaveTime = 0; // Для ограничения записи в EEPROM
     if (currentMillis - lastResponseTime < DELAY_AFTER_RESPONSE) return;
     lastResponseTime = currentMillis;
 
@@ -338,7 +369,7 @@ static void updateTransaction(FSMContext* ctx) {
         if (handleResponse(respBuffer, respLength, STATUS_RESPONSE_LENGTH, ctx)) {
             if (!ctx->transactionStarted && respBuffer[4] == '1' && respBuffer[5] == '0') {
                 ctx->waitingForResponse = false;
-                displayMessage("Confirm transaction? Press K");
+                displayMessage("Confirm? Press K");
                 return;
             }
             if (!ctx->transactionStarted && (respBuffer[4] == '2' || respBuffer[4] == '1')) {
@@ -392,11 +423,6 @@ static void updateTransaction(FSMContext* ctx) {
                         }
                         ctx->currentLiters_dL = valid ? atol(litersStr) : 0;
                         displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Dispensing...", ctx->price > 9999);
-                        // Запись в EEPROM только раз в 10 секунд
-                        if (currentMillis - lastEepromSaveTime >= 10000) {
-                            saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state);
-                            lastEepromSaveTime = currentMillis;
-                        }
                     } else {
                         ctx->currentLiters_dL = 0;
                     }
@@ -414,11 +440,6 @@ static void updateTransaction(FSMContext* ctx) {
                         }
                         ctx->currentPriceTotal = valid ? atol(priceStr) : 0;
                         displayTransaction(ctx->currentLiters_dL, ctx->currentPriceTotal, "Dispensing...", ctx->price > 9999);
-                        // Запись в EEPROM только раз в 10 секунд
-                        if (currentMillis - lastEepromSaveTime >= 10000) {
-                            saveTransactionState(ctx->currentLiters_dL, ctx->currentPriceTotal, ctx->state);
-                            lastEepromSaveTime = currentMillis;
-                        }
                     } else {
                         ctx->currentPriceTotal = 0;
                     }
@@ -546,7 +567,11 @@ static void updateTransactionEnd(FSMContext* ctx) {
         ctx->errorCount = 0;
         ctx->skipFirstStatusCheck = true;
         if (!ctx->nozzleUpWarning) {
-            displayMessage("Please select mode");
+            if (ctx->modeSelected) {
+                displayFuelMode(ctx->fuelMode);
+            } else {
+                displayMessage("Please select mode");
+            }
         }
     }
 }
@@ -623,6 +648,7 @@ void initFSM(FSMContext* ctx) {
     ctx->skipFirstStatusCheck = false;
     ctx->lastKeyTime = 0;
     ctx->priceInput[0] = '\0';
+    ctx->modeSelected = false;
 
     // Проверка сохранённой транзакции
     uint32_t savedLiters, savedPrice;
@@ -640,12 +666,16 @@ void initFSM(FSMContext* ctx) {
             ctx->state = ctx->priceValid ? FSM_STATE_CHECK_STATUS : FSM_STATE_WAIT_FOR_PRICE_INPUT;
             if (!ctx->priceValid) {
                 displayMessage("Set price (0-99999)");
+            } else {
+                displayMessage("Please select mode");
             }
         }
     } else {
         ctx->state = ctx->priceValid ? FSM_STATE_CHECK_STATUS : FSM_STATE_WAIT_FOR_PRICE_INPUT;
         if (!ctx->priceValid) {
             displayMessage("Set price (0-99999)");
+        } else {
+            displayMessage("Please select mode");
         }
     }
 
@@ -705,7 +735,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                     ctx->state = FSM_STATE_IDLE;
                     ctx->stateEntryTime = currentMillis;
                     if (!ctx->nozzleUpWarning) {
-                        displayMessage("Please select mode");
+                        if (ctx->modeSelected) {
+                            displayFuelMode(ctx->fuelMode);
+                        } else {
+                            displayMessage("Please select mode");
+                        }
                     }
                 } else {
                     ctx->priceInput[0] = '\0';
@@ -738,7 +772,7 @@ void processKeyFSM(FSMContext* ctx, char key) {
         }
         case FSM_STATE_IDLE: {
             if (ctx->nozzleUpWarning && key == 'K') {
-                displayMessage("Nozzle up! Hang up.");
+                displayMessage("Nozzle up! Hang up");
                 ctx->stateEntryTime = currentMillis;
             } else if (key == 'G') {
                 ctx->state = FSM_STATE_VIEW_PRICE;
@@ -748,12 +782,14 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 displayMessage(priceStr);
             } else if (key == 'E') {
                 ctx->statusPollingActive = true;
+                ctx->modeSelected = false;
                 if (!ctx->nozzleUpWarning) {
                     displayMessage("Please select mode");
                 }
                 ctx->stateEntryTime = currentMillis;
             } else if (key == 'C') {
                 ctx->fuelMode = (FuelMode)((ctx->fuelMode + 1) % 3);
+                ctx->modeSelected = true;
                 displayFuelMode(ctx->fuelMode);
                 ctx->stateEntryTime = currentMillis;
             } else if (key == 'K' && !ctx->nozzleUpWarning) {
@@ -791,7 +827,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->state = FSM_STATE_IDLE;
                 ctx->stateEntryTime = currentMillis;
                 if (!ctx->nozzleUpWarning) {
-                    displayMessage("Please select mode");
+                    if (ctx->modeSelected) {
+                        displayFuelMode(ctx->fuelMode);
+                    } else {
+                        displayMessage("Please select mode");
+                    }
                 }
             }
             break;
@@ -827,7 +867,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 } else {
                     ctx->state = FSM_STATE_IDLE;
                     if (!ctx->nozzleUpWarning) {
-                        displayMessage("Please select mode");
+                        if (ctx->modeSelected) {
+                            displayFuelMode(ctx->fuelMode);
+                        } else {
+                            displayMessage("Please select mode");
+                        }
                     }
                     ctx->stateEntryTime = currentMillis;
                 }
@@ -841,7 +885,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->state = (ctx->state == FSM_STATE_TRANSITION_PRICE_SET) ? FSM_STATE_CHECK_STATUS : FSM_STATE_IDLE;
                 ctx->stateEntryTime = currentMillis;
                 if (ctx->state == FSM_STATE_IDLE && !ctx->nozzleUpWarning) {
-                    displayMessage("Please select mode");
+                    if (ctx->modeSelected) {
+                        displayFuelMode(ctx->fuelMode);
+                    } else {
+                        displayMessage("Please select mode");
+                    }
                 }
             }
             break;
@@ -855,7 +903,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->state = FSM_STATE_IDLE;
                 ctx->stateEntryTime = currentMillis;
                 if (!ctx->nozzleUpWarning) {
-                    displayMessage("Please select mode");
+                    if (ctx->modeSelected) {
+                        displayFuelMode(ctx->fuelMode);
+                    } else {
+                        displayMessage("Please select mode");
+                    }
                 }
             }
             break;
@@ -875,7 +927,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->finalPriceTotal = 0;
                 ctx->errorCount = 0;
                 if (!ctx->nozzleUpWarning) {
-                    displayMessage("Please select mode");
+                    if (ctx->modeSelected) {
+                        displayFuelMode(ctx->fuelMode);
+                    } else {
+                        displayMessage("Please select mode");
+                    }
                 }
             } else if (key == 'E') {
                 rs422SendPause();
@@ -922,7 +978,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->errorCount = 0;
                 ctx->skipFirstStatusCheck = true;
                 if (!ctx->nozzleUpWarning) {
-                    displayMessage("Please select mode");
+                    if (ctx->modeSelected) {
+                        displayFuelMode(ctx->fuelMode);
+                    } else {
+                        displayMessage("Please select mode");
+                    }
                 }
             }
             break;
@@ -938,7 +998,11 @@ void processKeyFSM(FSMContext* ctx, char key) {
                 ctx->errorCount = 0;
                 ctx->c0RetryCount = 0;
                 if (!ctx->nozzleUpWarning) {
-                    displayMessage("Please select mode");
+                    if (ctx->modeSelected) {
+                        displayFuelMode(ctx->fuelMode);
+                    } else {
+                        displayMessage("Please select mode");
+                    }
                 }
             }
             break;
